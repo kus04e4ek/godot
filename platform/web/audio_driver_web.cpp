@@ -82,7 +82,7 @@ void AudioDriverWeb::_audio_driver_process(int p_from, int p_samples) {
 		const int samples_high = max_samples - write_pos;
 		audio_server_process(samples_high / channel_count, &stream_buffer[write_pos]);
 		for (int i = write_pos; i < max_samples; i++) {
-			output_rb[i] = float(stream_buffer[i] >> 16) / 32768.f;
+			AudioDriver::audio_buffer_write(AUDIO_FORMAT_FLOAT_PCM, output_rb, i, stream_buffer[i]);
 		}
 		to_write -= samples_high;
 		write_pos = 0;
@@ -90,7 +90,7 @@ void AudioDriverWeb::_audio_driver_process(int p_from, int p_samples) {
 	// Leftover
 	audio_server_process(to_write / channel_count, &stream_buffer[write_pos]);
 	for (int i = write_pos; i < write_pos + to_write; i++) {
-		output_rb[i] = float(stream_buffer[i] >> 16) / 32768.f;
+		AudioDriver::audio_buffer_write(AUDIO_FORMAT_FLOAT_PCM, output_rb, i, stream_buffer[i]);
 	}
 }
 
@@ -109,14 +109,16 @@ void AudioDriverWeb::_audio_driver_capture(int p_from, int p_samples) {
 	if (read_pos + to_read > max_samples) {
 		const int samples_high = max_samples - read_pos;
 		for (int i = read_pos; i < max_samples; i++) {
-			input_buffer_write(int32_t(input_rb[i] * 32768.f) * (1U << 16));
+			int32_t sample = AudioDriver::audio_buffer_read(AUDIO_FORMAT_FLOAT_PCM, input_rb, i);
+			input_buffer_write(sample);
 		}
 		to_read -= samples_high;
 		read_pos = 0;
 	}
 	// Leftover
 	for (int i = read_pos; i < read_pos + to_read; i++) {
-		input_buffer_write(int32_t(input_rb[i] * 32768.f) * (1U << 16));
+		int32_t sample = AudioDriver::audio_buffer_read(AUDIO_FORMAT_FLOAT_PCM, input_rb, i);
+		input_buffer_write(sample);
 	}
 }
 

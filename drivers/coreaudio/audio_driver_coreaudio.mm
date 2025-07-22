@@ -212,7 +212,7 @@ OSStatus AudioDriverCoreAudio::output_callback(void *inRefCon,
 			ad->audio_server_process(frames, ad->samples_in.ptrw());
 
 			for (unsigned int j = 0; j < frames * ad->channels; j++) {
-				out[j] = ad->samples_in[j] >> 16;
+				AudioDriver::audio_buffer_write(AUDIO_FORMAT_16BIT_PCM, out, j, ad->samples_in[j]);
 			}
 
 			frames_left -= frames;
@@ -249,7 +249,7 @@ OSStatus AudioDriverCoreAudio::input_callback(void *inRefCon,
 	if (result == noErr) {
 		int16_t *data = (int16_t *)bufferList.mBuffers[0].mData;
 		for (unsigned int i = 0; i < inNumberFrames * ad->capture_channels; i++) {
-			int32_t sample = data[i] << 16;
+			int32_t sample = AudioDriver::audio_buffer_read(AUDIO_FORMAT_16BIT_PCM, data, i);
 			ad->input_buffer_write(sample);
 
 			if (ad->capture_channels == 1) {

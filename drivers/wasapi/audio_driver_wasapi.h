@@ -50,8 +50,7 @@ class AudioDriverWASAPI : public AudioDriver {
 		IAudioCaptureClient *capture_client = nullptr; // Input
 		SafeFlag active;
 
-		WORD format_tag = 0;
-		WORD bits_per_sample = 0;
+		AudioFormat format = AUDIO_FORMAT_8BIT_PCM;
 		unsigned int channels = 0;
 		unsigned int frame_size = 0;
 
@@ -78,8 +77,6 @@ class AudioDriverWASAPI : public AudioDriver {
 
 	SafeFlag exit_thread;
 
-	static _FORCE_INLINE_ void write_sample(WORD format_tag, int bits_per_sample, BYTE *buffer, int i, int32_t sample);
-	static _FORCE_INLINE_ int32_t read_sample(WORD format_tag, int bits_per_sample, BYTE *buffer, int i);
 	static void thread_func(void *p_udata);
 
 	Error init_output_device(bool p_reinit = false);

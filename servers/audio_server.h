@@ -58,6 +58,14 @@ class AudioDriver {
 #endif
 
 protected:
+	enum AudioFormat {
+		AUDIO_FORMAT_8BIT_PCM,
+		AUDIO_FORMAT_16BIT_PCM,
+		AUDIO_FORMAT_24BIT_PCM,
+		AUDIO_FORMAT_32BIT_PCM,
+		AUDIO_FORMAT_FLOAT_PCM,
+	};
+
 	Vector<int32_t> input_buffer;
 	unsigned int input_position = 0;
 	unsigned int input_size = 0;
@@ -66,6 +74,9 @@ protected:
 	void update_mix_time(int p_frames);
 	void input_buffer_init(int driver_buffer_frames);
 	void input_buffer_write(int32_t sample);
+
+	static int32_t audio_buffer_read(AudioFormat p_format, const void* p_buffer, uint64_t p_idx);
+	static void audio_buffer_write(AudioFormat p_format, void* p_buffer, uint64_t p_idx, int32_t p_sample);
 
 	int _get_configured_mix_rate();
 

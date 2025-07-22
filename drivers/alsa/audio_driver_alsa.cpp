@@ -200,16 +200,18 @@ void AudioDriverALSA::thread_func(void *p_udata) {
 		ad->lock();
 		ad->start_counting_ticks();
 
+		int16_t *out_ptr = ad->samples_out.ptrw();
+
 		if (!ad->active.is_set()) {
 			for (uint64_t i = 0; i < ad->period_size * ad->channels; i++) {
-				ad->samples_out.write[i] = 0;
+				out_ptr[i] = 0;
 			}
 
 		} else {
 			ad->audio_server_process(ad->period_size, ad->samples_in.ptrw());
 
 			for (uint64_t i = 0; i < ad->period_size * ad->channels; i++) {
-				ad->samples_out.write[i] = ad->samples_in[i] >> 16;
+				AudioDriver::audio_buffer_write(AUDIO_FORMAT_16BIT_PCM, out_ptr, i, ad->samples_in[i]);
 			}
 		}
 

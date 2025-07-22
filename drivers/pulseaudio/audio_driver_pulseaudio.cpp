@@ -413,7 +413,7 @@ void AudioDriverPulseAudio::thread_func(void *p_udata) {
 
 				if (ad->channels == ad->pa_map.channels) {
 					for (unsigned int i = 0; i < ad->pa_buffer_size; i++) {
-						out_ptr[i] = ad->samples_in[i] >> 16;
+						AudioDriver::audio_buffer_write(AUDIO_FORMAT_16BIT_PCM, out_ptr, i, ad->samples_in[i]);
 					}
 				} else {
 					// Uneven amount of channels
@@ -422,11 +422,12 @@ void AudioDriverPulseAudio::thread_func(void *p_udata) {
 
 					for (unsigned int i = 0; i < ad->buffer_frames; i++) {
 						for (int j = 0; j < ad->pa_map.channels - 1; j++) {
-							out_ptr[out_idx++] = ad->samples_in[in_idx++] >> 16;
+							AudioDriver::audio_buffer_write(AUDIO_FORMAT_16BIT_PCM, out_ptr, out_idx++, ad->samples_in[in_idx++]);
 						}
-						uint32_t l = ad->samples_in[in_idx++] >> 16;
-						uint32_t r = ad->samples_in[in_idx++] >> 16;
-						out_ptr[out_idx++] = (l + r) / 2;
+						int32_t l = ad->samples_in[in_idx++];
+						int32_t r = ad->samples_in[in_idx++];
+						int32_t c = (int32_t)(((int64_t)l + (int64_t)r) / 2);
+						AudioDriver::audio_buffer_write(AUDIO_FORMAT_16BIT_PCM, out_ptr, out_idx++, c);
 					}
 				}
 			}
@@ -535,9 +536,8 @@ void AudioDriverPulseAudio::thread_func(void *p_udata) {
 				if (ret != 0) {
 					ERR_PRINT("pa_stream_peek error");
 				} else {
-					int16_t *srcptr = (int16_t *)ptr;
-					for (size_t i = bytes >> 1; i > 0; i--) {
-						int32_t sample = int32_t(*srcptr++) << 16;
+					for (size_t i = 0; i < (bytes >> 1); i++) {
+						int32_t sample = AudioDriver::audio_buffer_read(AUDIO_FORMAT_16BIT_PCM, ptr, i);
 						ad->input_buffer_write(sample);
 
 						if (ad->pa_rec_map.channels == 1) {

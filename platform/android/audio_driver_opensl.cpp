@@ -64,7 +64,7 @@ void AudioDriverOpenSL::_buffer_callback(
 	last_free = (last_free + 1) % BUFFER_COUNT;
 
 	for (unsigned int i = 0; i < buffer_size * 2; i++) {
-		ptr[i] = src_buff[i] >> 16;
+		AudioDriver::audio_buffer_write(AUDIO_FORMAT_16BIT_PCM, ptr, i, src_buff[i]);
 	}
 
 	(*queueItf)->Enqueue(queueItf, ptr, 4 * buffer_size);
@@ -183,7 +183,7 @@ void AudioDriverOpenSL::start() {
 
 void AudioDriverOpenSL::_record_buffer_callback(SLAndroidSimpleBufferQueueItf queueItf) {
 	for (int i = 0; i < rec_buffer.size(); i++) {
-		int32_t sample = rec_buffer[i] << 16;
+		int32_t sample = AudioDriver::audio_buffer_read(AUDIO_FORMAT_16BIT_PCM, rec_buffer.ptr(), i);
 		input_buffer_write(sample);
 		input_buffer_write(sample); // call twice to convert to Stereo
 	}

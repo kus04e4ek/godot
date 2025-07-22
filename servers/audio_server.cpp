@@ -113,6 +113,63 @@ void AudioDriver::input_buffer_write(int32_t sample) {
 	}
 }
 
+int32_t AudioDriver::audio_buffer_read(AudioFormat p_format, const void* p_buffer, uint64_t p_idx) {
+	switch (p_format)
+	{
+	case AUDIO_FORMAT_8BIT_PCM:
+		return int32_t(((int8_t *)p_buffer)[p_idx]) << 24;
+
+	case AUDIO_FORMAT_16BIT_PCM:
+		return int32_t(((int16_t *)p_buffer)[p_idx]) << 16;
+
+	case AUDIO_FORMAT_24BIT_PCM:
+	{
+		int32_t sample = 0;
+		sample |= int32_t(((int8_t *)p_buffer)[p_idx * 3 + 2]) << 24;
+		sample |= int32_t(((int8_t *)p_buffer)[p_idx * 3 + 1]) << 16;
+		sample |= int32_t(((int8_t *)p_buffer)[p_idx * 3 + 0]) << 8;
+		return sample;
+	}
+
+	case AUDIO_FORMAT_32BIT_PCM:
+		return ((int32_t *)p_buffer)[p_idx];
+
+	case AUDIO_FORMAT_FLOAT_PCM:
+		return int32_t(((float *)p_buffer)[p_idx] * 32768.0) << 16;
+	}
+
+	ERR_FAIL_V(0);
+}
+
+void AudioDriver::audio_buffer_write(AudioFormat p_format, void* p_buffer, uint64_t p_idx, int32_t p_sample) {
+	switch (p_format)
+	{
+	case AUDIO_FORMAT_8BIT_PCM:
+		((int8_t *)p_buffer)[p_idx] = p_sample >> 24;
+		return;
+
+	case AUDIO_FORMAT_16BIT_PCM:
+		((int16_t *)p_buffer)[p_idx] = p_sample >> 16;
+		break;
+
+	case AUDIO_FORMAT_24BIT_PCM:
+		((int8_t *)p_buffer)[p_idx * 3 + 2] = p_sample >> 24;
+		((int8_t *)p_buffer)[p_idx * 3 + 1] = p_sample >> 16;
+		((int8_t *)p_buffer)[p_idx * 3 + 0] = p_sample >> 8;
+		return;
+
+	case AUDIO_FORMAT_32BIT_PCM:
+		((int32_t *)p_buffer)[p_idx] = p_sample;
+		return;
+
+	case AUDIO_FORMAT_FLOAT_PCM:
+		((float *)p_buffer)[p_idx] = (p_sample >> 16) / 32768.f;
+		return;
+	}
+
+	ERR_FAIL();
+}
+
 int AudioDriver::_get_configured_mix_rate() {
 	StringName audio_driver_setting = "audio/driver/mix_rate";
 	int mix_rate = GLOBAL_GET(audio_driver_setting);

@@ -357,29 +357,50 @@ Error AudioDriverWASAPI::audio_device_init(AudioDeviceWASAPI *p_device, bool p_i
 	}
 
 	// Since we're using WASAPI Shared Mode we can't control any of these, we just tag along
-	p_device->channels = pwfex->nChannels;
-	p_device->format_tag = pwfex->wFormatTag;
-	p_device->bits_per_sample = pwfex->wBitsPerSample;
-	p_device->frame_size = (p_device->bits_per_sample / 8) * p_device->channels;
+	WORD format_tag = pwfex->wFormatTag;
+	WORD bits_per_sample = pwfex->wBitsPerSample;
 
-	if (p_device->format_tag == WAVE_FORMAT_EXTENSIBLE) {
+	p_device->channels = pwfex->nChannels;
+	p_device->frame_size = (bits_per_sample / 8) * p_device->channels;
+
+	if (format_tag == WAVE_FORMAT_EXTENSIBLE) {
 		WAVEFORMATEXTENSIBLE *wfex = (WAVEFORMATEXTENSIBLE *)pwfex;
 
 		if (wfex->SubFormat == KSDATAFORMAT_SUBTYPE_PCM) {
-			p_device->format_tag = WAVE_FORMAT_PCM;
+			format_tag = WAVE_FORMAT_PCM;
 		} else if (wfex->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) {
-			p_device->format_tag = WAVE_FORMAT_IEEE_FLOAT;
+			format_tag = WAVE_FORMAT_IEEE_FLOAT;
 		} else {
 			ERR_PRINT("WASAPI: Format not supported");
 			CoTaskMemFree(pwfex);
 			ERR_FAIL_V(ERR_CANT_OPEN);
 		}
-	} else {
-		if (p_device->format_tag != WAVE_FORMAT_PCM && p_device->format_tag != WAVE_FORMAT_IEEE_FLOAT) {
-			ERR_PRINT("WASAPI: Format not supported");
-			CoTaskMemFree(pwfex);
-			ERR_FAIL_V(ERR_CANT_OPEN);
+	}
+
+	if (format_tag == WAVE_FORMAT_PCM) {
+		switch (bits_per_sample) {
+		case 8:
+			p_device->format = AUDIO_FORMAT_8BIT_PCM;
+			break;
+
+		case 16:
+			p_device->format = AUDIO_FORMAT_16BIT_PCM;
+			break;
+
+		case 24:
+			p_device->format = AUDIO_FORMAT_24BIT_PCM;
+			break;
+
+		case 32:
+			p_device->format = AUDIO_FORMAT_32BIT_PCM;
+			break;
 		}
+	} else if (format_tag == WAVE_FORMAT_IEEE_FLOAT) {
+		p_device->format = AUDIO_FORMAT_FLOAT_PCM;
+	} else {
+		ERR_PRINT("WASAPI: Format not supported");
+		CoTaskMemFree(pwfex);
+		ERR_FAIL_V(ERR_CANT_OPEN);
 	}
 
 	if (!using_audio_client_3) {
@@ -671,67 +692,6 @@ void AudioDriverWASAPI::set_output_device(const String &p_name) {
 	unlock();
 }
 
-int32_t AudioDriverWASAPI::read_sample(WORD format_tag, int bits_per_sample, BYTE *buffer, int i) {
-	if (format_tag == WAVE_FORMAT_PCM) {
-		int32_t sample = 0;
-		switch (bits_per_sample) {
-			case 8:
-				sample = int32_t(((int8_t *)buffer)[i]) << 24;
-				break;
-
-			case 16:
-				sample = int32_t(((int16_t *)buffer)[i]) << 16;
-				break;
-
-			case 24:
-				sample |= int32_t(((int8_t *)buffer)[i * 3 + 2]) << 24;
-				sample |= int32_t(((int8_t *)buffer)[i * 3 + 1]) << 16;
-				sample |= int32_t(((int8_t *)buffer)[i * 3 + 0]) << 8;
-				break;
-
-			case 32:
-				sample = ((int32_t *)buffer)[i];
-				break;
-		}
-
-		return sample;
-	} else if (format_tag == WAVE_FORMAT_IEEE_FLOAT) {
-		return int32_t(((float *)buffer)[i] * 32768.0) << 16;
-	} else {
-		ERR_PRINT("WASAPI: Unknown format tag");
-	}
-
-	return 0;
-}
-
-void AudioDriverWASAPI::write_sample(WORD format_tag, int bits_per_sample, BYTE *buffer, int i, int32_t sample) {
-	if (format_tag == WAVE_FORMAT_PCM) {
-		switch (bits_per_sample) {
-			case 8:
-				((int8_t *)buffer)[i] = sample >> 24;
-				break;
-
-			case 16:
-				((int16_t *)buffer)[i] = sample >> 16;
-				break;
-
-			case 24:
-				((int8_t *)buffer)[i * 3 + 2] = sample >> 24;
-				((int8_t *)buffer)[i * 3 + 1] = sample >> 16;
-				((int8_t *)buffer)[i * 3 + 0] = sample >> 8;
-				break;
-
-			case 32:
-				((int32_t *)buffer)[i] = sample;
-				break;
-		}
-	} else if (format_tag == WAVE_FORMAT_IEEE_FLOAT) {
-		((float *)buffer)[i] = (sample >> 16) / 32768.f;
-	} else {
-		ERR_PRINT("WASAPI: Unknown format tag");
-	}
-}
-
 void AudioDriverWASAPI::thread_func(void *p_udata) {
 	CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
@@ -784,7 +744,7 @@ void AudioDriverWASAPI::thread_func(void *p_udata) {
 						// We're using WASAPI Shared Mode so we must convert the buffer
 						if (ad->channels == ad->audio_output.channels) {
 							for (unsigned int i = 0; i < write_frames * ad->channels; i++) {
-								ad->write_sample(ad->audio_output.format_tag, ad->audio_output.bits_per_sample, buffer, i, ad->samples_in.write[write_ofs++]);
+								AudioDriver::audio_buffer_write(ad->audio_output.format, buffer, i, ad->samples_in[write_ofs++]);
 							}
 						} else if (ad->channels == ad->audio_output.channels + 1) {
 							// Pass all channels except the last two as-is, and then mix the last two
@@ -792,21 +752,21 @@ void AudioDriverWASAPI::thread_func(void *p_udata) {
 							unsigned int last_chan = ad->audio_output.channels - 1;
 							for (unsigned int i = 0; i < write_frames; i++) {
 								for (unsigned int j = 0; j < last_chan; j++) {
-									ad->write_sample(ad->audio_output.format_tag, ad->audio_output.bits_per_sample, buffer, i * ad->audio_output.channels + j, ad->samples_in.write[write_ofs++]);
+									AudioDriver::audio_buffer_write(ad->audio_output.format, buffer, i * ad->audio_output.channels + j, ad->samples_in[write_ofs++]);
 								}
-								int32_t l = ad->samples_in.write[write_ofs++];
-								int32_t r = ad->samples_in.write[write_ofs++];
+								int32_t l = ad->samples_in[write_ofs++];
+								int32_t r = ad->samples_in[write_ofs++];
 								int32_t c = (int32_t)(((int64_t)l + (int64_t)r) / 2);
-								ad->write_sample(ad->audio_output.format_tag, ad->audio_output.bits_per_sample, buffer, i * ad->audio_output.channels + last_chan, c);
+								AudioDriver::audio_buffer_write(ad->audio_output.format, buffer, i * ad->audio_output.channels + last_chan, c);
 							}
 						} else {
 							for (unsigned int i = 0; i < write_frames; i++) {
 								for (unsigned int j = 0; j < MIN(ad->channels, ad->audio_output.channels); j++) {
-									ad->write_sample(ad->audio_output.format_tag, ad->audio_output.bits_per_sample, buffer, i * ad->audio_output.channels + j, ad->samples_in.write[write_ofs++]);
+									AudioDriver::audio_buffer_write(ad->audio_output.format, buffer, i * ad->audio_output.channels + j, ad->samples_in[write_ofs++]);
 								}
 								if (ad->audio_output.channels > ad->channels) {
 									for (unsigned int j = ad->channels; j < ad->audio_output.channels; j++) {
-										ad->write_sample(ad->audio_output.format_tag, ad->audio_output.bits_per_sample, buffer, i * ad->audio_output.channels + j, 0);
+										AudioDriver::audio_buffer_write(ad->audio_output.format, buffer, i * ad->audio_output.channels + j, 0);
 									}
 								}
 							}
@@ -906,10 +866,10 @@ void AudioDriverWASAPI::thread_func(void *p_udata) {
 							l = r = 0;
 						} else {
 							if (ad->audio_input.channels == 2) {
-								l = read_sample(ad->audio_input.format_tag, ad->audio_input.bits_per_sample, data, j * 2);
-								r = read_sample(ad->audio_input.format_tag, ad->audio_input.bits_per_sample, data, j * 2 + 1);
+								l = AudioDriver::audio_buffer_read(ad->audio_input.format, data, j * 2);
+								r = AudioDriver::audio_buffer_read(ad->audio_input.format, data, j * 2 + 1);
 							} else if (ad->audio_input.channels == 1) {
-								l = r = read_sample(ad->audio_input.format_tag, ad->audio_input.bits_per_sample, data, j);
+								l = r = AudioDriver::audio_buffer_read(ad->audio_input.format, data, j);
 							} else {
 								l = r = 0;
 								ERR_PRINT("WASAPI: unsupported channel count in microphone!");
