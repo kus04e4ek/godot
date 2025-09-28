@@ -41,6 +41,7 @@
 
 #ifdef SDL_ENABLED
 #include "drivers/sdl/audio_driver_sdl.h"
+#include "drivers/sdl/audio_driver_sdl_hint.h"
 #endif
 
 #ifdef FONTCONFIG_ENABLED
@@ -71,6 +72,9 @@ class OS_LinuxBSD : public OS_Unix {
 
 #ifdef SDL_ENABLED
 	AudioDriverSDL audio_driver_sdl;
+	AudioDriverSDLNone audio_driver_sdl_none;
+	AudioDriverSDLALSA audio_driver_sdl_alsa;
+	AudioDriverSDLPulseAudio audio_driver_sdl_pulse;
 #endif
 
 #ifdef ALSA_ENABLED

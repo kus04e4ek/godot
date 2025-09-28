@@ -2770,6 +2770,8 @@ OS_Windows::OS_Windows(HINSTANCE _hInstance) {
 #endif
 #ifdef SDL_ENABLED
 	AudioDriverManager::add_driver(&audio_driver_sdl);
+	AudioDriverManager::add_driver(&audio_driver_sdl_none);
+	AudioDriverManager::add_driver(&audio_driver_sdl_wasapi);
 #endif
 
 	DisplayServerWindows::register_windows_driver();

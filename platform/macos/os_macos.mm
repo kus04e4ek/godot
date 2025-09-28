@@ -1063,6 +1063,8 @@ OS_MacOS::OS_MacOS(const char *p_execpath, int p_argc, char **p_argv) {
 
 #ifdef SDL_ENABLED
 	AudioDriverManager::add_driver(&audio_driver_sdl);
+	AudioDriverManager::add_driver(&audio_driver_sdl_none);
+	AudioDriverManager::add_driver(&audio_driver_sdl_core);
 #endif
 
 	DisplayServerMacOS::register_macos_driver();

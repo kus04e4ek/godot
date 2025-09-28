@@ -40,6 +40,7 @@
 
 #ifdef SDL_ENABLED
 #include "drivers/sdl/audio_driver_sdl.h"
+#include "drivers/sdl/audio_driver_sdl_hint.h"
 #endif
 
 class JoypadSDL;
@@ -47,6 +48,8 @@ class JoypadSDL;
 class OS_MacOS : public OS_Unix {
 #ifdef SDL_ENABLED
 	AudioDriverSDL audio_driver_sdl;
+	AudioDriverSDLNone audio_driver_sdl_none;
+	AudioDriverSDLCoreAudio audio_driver_sdl_core;
 #endif
 #ifdef COREAUDIO_ENABLED
 	AudioDriverCoreAudio audio_driver;

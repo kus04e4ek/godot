@@ -1288,6 +1288,9 @@ OS_LinuxBSD::OS_LinuxBSD() {
 
 #ifdef SDL_ENABLED
 	AudioDriverManager::add_driver(&audio_driver_sdl);
+	AudioDriverManager::add_driver(&audio_driver_sdl_none);
+	AudioDriverManager::add_driver(&audio_driver_sdl_alsa);
+	AudioDriverManager::add_driver(&audio_driver_sdl_pulse);
 #endif
 
 #ifdef X11_ENABLED

@@ -30,6 +30,8 @@
 
 #include "audio_driver_sdl.h"
 
+#include "drivers/sdl/audio_driver_sdl_hint.h"
+
 #include <SDL3/SDL_init.h>
 
 template <>
@@ -324,6 +326,11 @@ bool AudioDriverSDL::AudioStreamManager::set_device_name(const String &p_name) {
 }
 
 Error AudioDriverSDL::init() {
+	// If none of the drivers could init, there's no point in trying to init again.
+	if (unlikely(AudioDriverSDLNone::is_failed_to_init())) {
+		return FAILED;
+	}
+
 	ERR_FAIL_COND_V_MSG(!SDL_Init(SDL_INIT_AUDIO), FAILED, SDL_GetError());
 
 	MutexLock lock(mutex);
