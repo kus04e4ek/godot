@@ -206,12 +206,17 @@ bool AudioDriverSDL::AudioStreamManager::init_stream() {
 }
 
 bool AudioDriverSDL::AudioStreamManager::init() {
+	AudioDriverSDL *ad = AudioDriverSDL::get_singleton();
+
 	if (!has_event_watch) {
 		ERR_FAIL_COND_V_MSG(!SDL_AddEventWatch(event_watch, this), false, SDL_GetError());
 		has_event_watch = true;
 	}
 
-	device_id = SDL_OpenAudioDevice(get_device_id_by_name(), nullptr);
+	int mix_rate = ad->_get_configured_mix_rate();
+	SDL_AudioSpec request_spec = { .format = SDL_AUDIO_UNKNOWN, .channels = 0, .freq = mix_rate };
+
+	device_id = SDL_OpenAudioDevice(get_device_id_by_name(), &request_spec);
 	ERR_FAIL_COND_V_MSG(device_id == 0, false, SDL_GetError());
 
 	return update_spec();

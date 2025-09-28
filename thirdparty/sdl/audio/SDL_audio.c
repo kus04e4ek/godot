@@ -1670,8 +1670,16 @@ static SDL_AudioFormat ParseAudioFormatString(const char *string)
     return SDL_AUDIO_UNKNOWN;
 }
 
-static void PrepareAudioFormat(bool recording, SDL_AudioSpec *spec)
+static void PrepareAudioFormat(bool recording, SDL_AudioSpec *spec, SDL_AudioSpec *inspec, SDL_AudioSpec *default_spec)
 {
+    if (inspec && inspec->freq != 0) {
+        spec->freq = inspec->freq;
+    } else if (default_spec) {
+        spec->freq = default_spec->freq;
+    } else {
+        spec->freq = 0;
+    }
+
     if (spec->freq == 0) {
         spec->freq = recording ? DEFAULT_AUDIO_RECORDING_FREQUENCY : DEFAULT_AUDIO_PLAYBACK_FREQUENCY;
 
@@ -1684,6 +1692,14 @@ static void PrepareAudioFormat(bool recording, SDL_AudioSpec *spec)
         }
     }
 
+    if (inspec && inspec->channels != 0) {
+        spec->channels = inspec->channels;
+    } else if (default_spec) {
+        spec->channels = default_spec->channels;
+    } else {
+        spec->channels = 0;
+    }
+
     if (spec->channels == 0) {
         spec->channels = recording ? DEFAULT_AUDIO_RECORDING_CHANNELS : DEFAULT_AUDIO_PLAYBACK_CHANNELS;
 
@@ -1694,6 +1710,14 @@ static void PrepareAudioFormat(bool recording, SDL_AudioSpec *spec)
                 spec->channels = val;
             }
         }
+    }
+
+    if (inspec && inspec->format != 0) {
+        spec->format = inspec->format;
+    } else if (default_spec) {
+        spec->format = default_spec->format;
+    } else {
+        spec->format = 0;
     }
 
     if (spec->format == 0) {
@@ -1740,8 +1764,7 @@ static bool OpenPhysicalAudioDevice(SDL_AudioDevice *device, const SDL_AudioSpec
     device->FlushRecording = current_audio.impl.FlushRecording;
 
     SDL_AudioSpec spec;
-    SDL_copyp(&spec, inspec ? inspec : &device->default_spec);
-    PrepareAudioFormat(device->recording, &spec);
+    PrepareAudioFormat(device->recording, &spec, inspec, &device->default_spec);
 
     /* We impose a simple minimum on device formats. This prevents something low quality, like an old game using S8/8000Hz audio,
        from ruining a music thing playing at CD quality that tries to open later, or some VoIP library that opens for mono output
