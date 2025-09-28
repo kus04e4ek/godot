@@ -33,6 +33,26 @@
 #include "drivers/sdl/audio_driver_sdl.h"
 
 #include <SDL3/SDL_hints.h>
+#include <SDL3/SDL_init.h>
+
+// Create static variables so that they would auto-destruct.
+static AudioDriverSDLNone audio_driver_sdl_none;
+static AudioDriverSDLALSA audio_driver_sdl_alsa;
+static AudioDriverSDLCoreAudio audio_driver_sdl_core;
+static AudioDriverSDLPulseAudio audio_driver_sdl_pulse;
+static AudioDriverSDLWASAPI audio_driver_sdl_wasapi;
+
+const LocalVector<AudioDriverSDLHint *> AudioDriverSDLHint::audio_driver_hints = {
+	&audio_driver_sdl_none,
+#if defined(LINUXBSD_ENABLED)
+	&audio_driver_sdl_alsa,
+	&audio_driver_sdl_pulse,
+#elif defined(MACOS_ENABLED)
+	&audio_driver_sdl_core,
+#elif defined(WINDOWS_ENABLED)
+	&audio_driver_sdl_wasapi,
+#endif
+};
 
 bool AudioDriverSDLNone::failed_to_init = false;
 
@@ -104,6 +124,13 @@ String AudioDriverSDLHint::get_input_device() {
 
 void AudioDriverSDLHint::set_input_device(const String &p_name) {
 	return AudioDriverSDL::get_singleton()->set_input_device(p_name);
+}
+
+const char *AudioDriverSDLNone::get_name() const {
+	if (SDL_WasInit(SDL_INIT_AUDIO)) {
+		return AudioDriverSDL::get_singleton()->get_name();
+	}
+	return "SDL (None)";
 }
 
 Error AudioDriverSDLNone::init() {

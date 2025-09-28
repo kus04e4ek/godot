@@ -325,6 +325,20 @@ bool AudioDriverSDL::AudioStreamManager::set_device_name(const String &p_name) {
 	return true;
 }
 
+const char *AudioDriverSDL::get_name() const {
+	if (SDL_WasInit(SDL_INIT_AUDIO)) {
+		String audio_driver = SDL_GetCurrentAudioDriver();
+		for (const AudioDriverSDLHint *audio_driver_hint : AudioDriverSDLHint::audio_driver_hints) {
+			const char *audio_driver_hint_name = audio_driver_hint->get_driver_name();
+			if (audio_driver_hint_name != nullptr && audio_driver == audio_driver_hint_name) {
+				return audio_driver_hint->get_name();
+			}
+		}
+		ERR_FAIL_V_MSG("SDL (Unknown)", vformat("SDL's audio driver %s is unknown", audio_driver));
+	}
+	return "SDL";
+}
+
 Error AudioDriverSDL::init() {
 	// If none of the drivers could init, there's no point in trying to init again.
 	if (unlikely(AudioDriverSDLNone::is_failed_to_init())) {

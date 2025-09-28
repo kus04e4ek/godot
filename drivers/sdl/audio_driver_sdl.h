@@ -105,9 +105,7 @@ class AudioDriverSDL : public AudioDriver {
 	static AudioDriverSDL *singleton;
 
 public:
-	virtual const char *get_name() const override {
-		return "SDL";
-	}
+	virtual const char *get_name() const override;
 
 	virtual Error init() override;
 	virtual void start() override;

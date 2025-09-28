@@ -33,9 +33,13 @@
 #include "servers/audio_server.h"
 
 class AudioDriverSDLHint : public AudioDriver {
+	friend class AudioDriverSDL;
+
 	virtual const char *get_driver_name() const = 0;
 
 public:
+	static const LocalVector<AudioDriverSDLHint *> audio_driver_hints;
+
 	virtual Error init() override;
 	virtual void start() override;
 	virtual int get_mix_rate() const override;
@@ -66,9 +70,7 @@ class AudioDriverSDLNone : public AudioDriverSDLHint {
 	}
 
 public:
-	virtual const char *get_name() const {
-		return "SDL (None)";
-	}
+	virtual const char *get_name() const;
 
 	virtual Error init() override;
 

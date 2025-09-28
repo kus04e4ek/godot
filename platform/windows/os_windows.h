@@ -114,8 +114,6 @@ class OS_Windows : public OS {
 
 #ifdef SDL_ENABLED
 	AudioDriverSDL audio_driver_sdl;
-	AudioDriverSDLNone audio_driver_sdl_none;
-	AudioDriverSDLWASAPI audio_driver_sdl_wasapi;
 #endif
 #ifdef WASAPI_ENABLED
 	AudioDriverWASAPI driver_wasapi;

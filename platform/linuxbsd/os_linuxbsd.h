@@ -72,9 +72,6 @@ class OS_LinuxBSD : public OS_Unix {
 
 #ifdef SDL_ENABLED
 	AudioDriverSDL audio_driver_sdl;
-	AudioDriverSDLNone audio_driver_sdl_none;
-	AudioDriverSDLALSA audio_driver_sdl_alsa;
-	AudioDriverSDLPulseAudio audio_driver_sdl_pulse;
 #endif
 
 #ifdef ALSA_ENABLED
