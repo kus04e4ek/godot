@@ -155,6 +155,7 @@ typedef struct SDL_AudioDriverImpl
     bool (*WaitDevice)(SDL_AudioDevice *device);
     bool (*PlayDevice)(SDL_AudioDevice *device, const Uint8 *buffer, int buflen); // buffer and buflen are always from GetDeviceBuf, passed here for convenience.
     Uint8 *(*GetDeviceBuf)(SDL_AudioDevice *device, int *buffer_size);
+    bool (*GetDeviceLatency)(SDL_AudioDevice *device, float *latency);
     bool (*WaitRecordingDevice)(SDL_AudioDevice *device);
     int (*RecordDevice)(SDL_AudioDevice *device, void *buffer, int buflen);
     void (*FlushRecording)(SDL_AudioDevice *device);
@@ -290,6 +291,7 @@ struct SDL_AudioDevice
     bool (*WaitDevice)(SDL_AudioDevice *device);
     bool (*PlayDevice)(SDL_AudioDevice *device, const Uint8 *buffer, int buflen);
     Uint8 *(*GetDeviceBuf)(SDL_AudioDevice *device, int *buffer_size);
+    bool (*GetDeviceLatency)(SDL_AudioDevice *device, float *latency);
     bool (*WaitRecordingDevice)(SDL_AudioDevice *device);
     int (*RecordDevice)(SDL_AudioDevice *device, void *buffer, int buflen);
     void (*FlushRecording)(SDL_AudioDevice *device);

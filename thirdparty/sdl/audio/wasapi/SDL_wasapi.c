@@ -545,6 +545,16 @@ static Uint8 *WASAPI_GetDeviceBuf(SDL_AudioDevice *device, int *buffer_size)
     return (Uint8 *)buffer;
 }
 
+static bool WASAPI_GetDeviceLatency(SDL_AudioDevice *device, float *latency)
+{
+    REFERENCE_TIME rt;
+    if (device->hidden->client && IAudioClient_GetStreamLatency(device->hidden->client, &rt)) {
+        *latency = rt / 10000000.0f;
+        return true;
+    }
+    return false;
+}
+
 static bool WASAPI_PlayDevice(SDL_AudioDevice *device, const Uint8 *buffer, int buflen)
 {
     if (device->hidden->render && !SDL_GetAtomicInt(&device->hidden->device_disconnecting)) { // definitely activated?
@@ -943,6 +953,7 @@ static bool WASAPI_Init(SDL_AudioDriverImpl *impl)
     impl->PlayDevice = WASAPI_PlayDevice;
     impl->WaitDevice = WASAPI_WaitDevice;
     impl->GetDeviceBuf = WASAPI_GetDeviceBuf;
+    impl->GetDeviceLatency = WASAPI_GetDeviceLatency;
     impl->WaitRecordingDevice = WASAPI_WaitDevice;
     impl->RecordDevice = WASAPI_RecordDevice;
     impl->FlushRecording = WASAPI_FlushRecording;

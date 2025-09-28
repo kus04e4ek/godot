@@ -112,6 +112,7 @@ static int (*PULSEAUDIO_pa_stream_connect_record)(pa_stream *, const char *,
                                                   const pa_buffer_attr *, pa_stream_flags_t);
 static const pa_buffer_attr *(*PULSEAUDIO_pa_stream_get_buffer_attr)(pa_stream *);
 static pa_stream_state_t (*PULSEAUDIO_pa_stream_get_state)(const pa_stream *);
+static int (*PULSEAUDIO_pa_stream_get_latency)(pa_stream *, pa_usec_t *r_usec, int *negative);
 static size_t (*PULSEAUDIO_pa_stream_writable_size)(const pa_stream *);
 static size_t (*PULSEAUDIO_pa_stream_readable_size)(const pa_stream *);
 static int (*PULSEAUDIO_pa_stream_write)(pa_stream *, const void *, size_t,
@@ -227,6 +228,7 @@ static bool load_pulseaudio_syms(void)
     SDL_PULSEAUDIO_SYM(pa_stream_connect_record);
     SDL_PULSEAUDIO_SYM(pa_stream_get_buffer_attr);
     SDL_PULSEAUDIO_SYM(pa_stream_get_state);
+    SDL_PULSEAUDIO_SYM(pa_stream_get_latency);
     SDL_PULSEAUDIO_SYM(pa_stream_writable_size);
     SDL_PULSEAUDIO_SYM(pa_stream_readable_size);
     SDL_PULSEAUDIO_SYM(pa_stream_begin_write);
@@ -468,6 +470,24 @@ static Uint8 *PULSEAUDIO_GetDeviceBuf(SDL_AudioDevice *device, int *buffer_size)
     return device->hidden->mixbuf;
 }
 
+static bool PULSEAUDIO_GetDeviceLatency(SDL_AudioDevice *device, float *latency)
+{
+	pa_usec_t pa_lat = 0;
+	if (device->hidden->stream && PULSEAUDIO_pa_context_get_state(pulseaudio_context) == PA_CONTEXT_READY && PULSEAUDIO_pa_stream_get_state(device->hidden->stream) == PA_STREAM_READY) {
+		int negative = 0;
+
+		if (PULSEAUDIO_pa_stream_get_latency(device->hidden->stream, &pa_lat, &negative) >= 0) {
+            if (negative) {
+			    *latency = 0;
+                return true;
+            }
+			*latency = pa_lat / 1000000.0f;
+            return true;
+		}
+	}
+    return false;
+}
+
 static void ReadCallback(pa_stream *p, size_t nbytes, void *userdata)
 {
     //SDL_Log("PULSEAUDIO READ CALLBACK! nbytes=%u", (unsigned int) nbytes);
@@ -604,7 +624,7 @@ static bool PULSEAUDIO_OpenDevice(SDL_AudioDevice *device)
     pa_sample_spec paspec;
     pa_buffer_attr paattr;
     pa_channel_map pacmap;
-    pa_stream_flags_t flags = 0;
+    pa_stream_flags_t flags = PA_STREAM_INTERPOLATE_TIMING | PA_STREAM_AUTO_TIMING_UPDATE;
     int format = PA_SAMPLE_INVALID;
     bool result = true;
 
@@ -1021,6 +1041,7 @@ static bool PULSEAUDIO_Init(SDL_AudioDriverImpl *impl)
     impl->PlayDevice = PULSEAUDIO_PlayDevice;
     impl->WaitDevice = PULSEAUDIO_WaitDevice;
     impl->GetDeviceBuf = PULSEAUDIO_GetDeviceBuf;
+    impl->GetDeviceLatency = PULSEAUDIO_GetDeviceLatency;
     impl->CloseDevice = PULSEAUDIO_CloseDevice;
     impl->DeinitializeStart = PULSEAUDIO_DeinitializeStart;
     impl->Deinitialize = PULSEAUDIO_Deinitialize;

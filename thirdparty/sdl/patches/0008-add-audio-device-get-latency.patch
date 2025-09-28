@@ -1,0 +1,435 @@
+diff --git a/thirdparty/sdl/audio/SDL_audio.c b/thirdparty/sdl/audio/SDL_audio.c
+index 239a7314ec..5b5b6458cb 100644
+--- a/thirdparty/sdl/audio/SDL_audio.c
++++ b/thirdparty/sdl/audio/SDL_audio.c
+@@ -318,6 +318,12 @@ static Uint8 *ZombieGetDeviceBuf(SDL_AudioDevice *device, int *buffer_size)
+     return device->work_buffer;
+ }
+ 
++static bool ZombieGetDeviceLatency(SDL_AudioDevice *device, float *latency)
++{
++    *latency = 0;
++    return true;
++}
++
+ static int ZombieRecordDevice(SDL_AudioDevice *device, void *buffer, int buflen)
+ {
+     // return a full buffer of silence every time.
+@@ -752,6 +758,7 @@ void SDL_AudioDeviceDisconnected(SDL_AudioDevice *device)
+         // progress will freeze, etc.
+         device->WaitDevice = ZombieWaitDevice;
+         device->GetDeviceBuf = ZombieGetDeviceBuf;
++        device->GetDeviceLatency = ZombieGetDeviceLatency;
+         device->PlayDevice = ZombiePlayDevice;
+         device->WaitRecordingDevice = ZombieWaitDevice;
+         device->RecordDevice = ZombieRecordDevice;
+@@ -835,6 +842,12 @@ static Uint8 *SDL_AudioGetDeviceBuf_Default(SDL_AudioDevice *device, int *buffer
+     return NULL;
+ }
+ 
++static bool SDL_AudioGetDeviceLatency_Default(SDL_AudioDevice *device, float *latency)
++{
++    *latency = 0;
++    return true;
++}
++
+ static int SDL_AudioRecordDevice_Default(SDL_AudioDevice *device, void *buffer, int buflen)
+ {
+     SDL_Unsupported();
+@@ -857,6 +870,7 @@ static void CompleteAudioEntryPoints(void)
+     FILL_STUB(WaitDevice);
+     FILL_STUB(PlayDevice);
+     FILL_STUB(GetDeviceBuf);
++    FILL_STUB(GetDeviceLatency);
+     FILL_STUB(WaitRecordingDevice);
+     FILL_STUB(RecordDevice);
+     FILL_STUB(FlushRecording);
+@@ -1578,6 +1592,22 @@ int *SDL_GetAudioDeviceChannelMap(SDL_AudioDeviceID devid, int *count)
+     return result;
+ }
+ 
++bool SDL_GetAudioDeviceLatency(SDL_AudioDeviceID devid, float *latency)
++{
++    if (!latency) {
++        return SDL_InvalidParamError("latency");
++    }
++
++    bool result = false;
++    SDL_AudioDevice *device = ObtainPhysicalAudioDeviceDefaultAllowed(devid);
++    if (device) {
++        result = device->GetDeviceLatency(device, latency);
++    }
++    ReleaseAudioDevice(device);
++
++    return result;
++}
++
+ 
+ // this is awkward, but this makes sure we can release the device lock
+ //  so the device thread can terminate but also not have two things
+@@ -1759,6 +1789,7 @@ static bool OpenPhysicalAudioDevice(SDL_AudioDevice *device, const SDL_AudioSpec
+     device->WaitDevice = current_audio.impl.WaitDevice;
+     device->PlayDevice = current_audio.impl.PlayDevice;
+     device->GetDeviceBuf = current_audio.impl.GetDeviceBuf;
++    device->GetDeviceLatency = current_audio.impl.GetDeviceLatency;
+     device->WaitRecordingDevice = current_audio.impl.WaitRecordingDevice;
+     device->RecordDevice = current_audio.impl.RecordDevice;
+     device->FlushRecording = current_audio.impl.FlushRecording;
+diff --git a/thirdparty/sdl/audio/SDL_sysaudio.h b/thirdparty/sdl/audio/SDL_sysaudio.h
+index 4a88bd2302..c098a87522 100644
+--- a/thirdparty/sdl/audio/SDL_sysaudio.h
++++ b/thirdparty/sdl/audio/SDL_sysaudio.h
+@@ -155,6 +155,7 @@ typedef struct SDL_AudioDriverImpl
+     bool (*WaitDevice)(SDL_AudioDevice *device);
+     bool (*PlayDevice)(SDL_AudioDevice *device, const Uint8 *buffer, int buflen); // buffer and buflen are always from GetDeviceBuf, passed here for convenience.
+     Uint8 *(*GetDeviceBuf)(SDL_AudioDevice *device, int *buffer_size);
++    bool (*GetDeviceLatency)(SDL_AudioDevice *device, float *latency);
+     bool (*WaitRecordingDevice)(SDL_AudioDevice *device);
+     int (*RecordDevice)(SDL_AudioDevice *device, void *buffer, int buflen);
+     void (*FlushRecording)(SDL_AudioDevice *device);
+@@ -290,6 +291,7 @@ struct SDL_AudioDevice
+     bool (*WaitDevice)(SDL_AudioDevice *device);
+     bool (*PlayDevice)(SDL_AudioDevice *device, const Uint8 *buffer, int buflen);
+     Uint8 *(*GetDeviceBuf)(SDL_AudioDevice *device, int *buffer_size);
++    bool (*GetDeviceLatency)(SDL_AudioDevice *device, float *latency);
+     bool (*WaitRecordingDevice)(SDL_AudioDevice *device);
+     int (*RecordDevice)(SDL_AudioDevice *device, void *buffer, int buflen);
+     void (*FlushRecording)(SDL_AudioDevice *device);
+diff --git a/thirdparty/sdl/audio/pulseaudio/SDL_pulseaudio.c b/thirdparty/sdl/audio/pulseaudio/SDL_pulseaudio.c
+index 4d618a6e2b..09a745de58 100644
+--- a/thirdparty/sdl/audio/pulseaudio/SDL_pulseaudio.c
++++ b/thirdparty/sdl/audio/pulseaudio/SDL_pulseaudio.c
+@@ -112,6 +112,7 @@ static int (*PULSEAUDIO_pa_stream_connect_record)(pa_stream *, const char *,
+                                                   const pa_buffer_attr *, pa_stream_flags_t);
+ static const pa_buffer_attr *(*PULSEAUDIO_pa_stream_get_buffer_attr)(pa_stream *);
+ static pa_stream_state_t (*PULSEAUDIO_pa_stream_get_state)(const pa_stream *);
++static int (*PULSEAUDIO_pa_stream_get_latency)(pa_stream *, pa_usec_t *r_usec, int *negative);
+ static size_t (*PULSEAUDIO_pa_stream_writable_size)(const pa_stream *);
+ static size_t (*PULSEAUDIO_pa_stream_readable_size)(const pa_stream *);
+ static int (*PULSEAUDIO_pa_stream_write)(pa_stream *, const void *, size_t,
+@@ -227,6 +228,7 @@ static bool load_pulseaudio_syms(void)
+     SDL_PULSEAUDIO_SYM(pa_stream_connect_record);
+     SDL_PULSEAUDIO_SYM(pa_stream_get_buffer_attr);
+     SDL_PULSEAUDIO_SYM(pa_stream_get_state);
++    SDL_PULSEAUDIO_SYM(pa_stream_get_latency);
+     SDL_PULSEAUDIO_SYM(pa_stream_writable_size);
+     SDL_PULSEAUDIO_SYM(pa_stream_readable_size);
+     SDL_PULSEAUDIO_SYM(pa_stream_begin_write);
+@@ -468,6 +470,24 @@ static Uint8 *PULSEAUDIO_GetDeviceBuf(SDL_AudioDevice *device, int *buffer_size)
+     return device->hidden->mixbuf;
+ }
+ 
++static bool PULSEAUDIO_GetDeviceLatency(SDL_AudioDevice *device, float *latency)
++{
++	pa_usec_t pa_lat = 0;
++	if (device->hidden->stream && PULSEAUDIO_pa_context_get_state(pulseaudio_context) == PA_CONTEXT_READY && PULSEAUDIO_pa_stream_get_state(device->hidden->stream) == PA_STREAM_READY) {
++		int negative = 0;
++
++		if (PULSEAUDIO_pa_stream_get_latency(device->hidden->stream, &pa_lat, &negative) >= 0) {
++            if (negative) {
++			    *latency = 0;
++                return true;
++            }
++			*latency = pa_lat / 1000000.0f;
++            return true;
++		}
++	}
++    return false;
++}
++
+ static void ReadCallback(pa_stream *p, size_t nbytes, void *userdata)
+ {
+     //SDL_Log("PULSEAUDIO READ CALLBACK! nbytes=%u", (unsigned int) nbytes);
+@@ -604,7 +624,7 @@ static bool PULSEAUDIO_OpenDevice(SDL_AudioDevice *device)
+     pa_sample_spec paspec;
+     pa_buffer_attr paattr;
+     pa_channel_map pacmap;
+-    pa_stream_flags_t flags = 0;
++    pa_stream_flags_t flags = PA_STREAM_INTERPOLATE_TIMING | PA_STREAM_AUTO_TIMING_UPDATE;
+     int format = PA_SAMPLE_INVALID;
+     bool result = true;
+ 
+@@ -1021,6 +1041,7 @@ static bool PULSEAUDIO_Init(SDL_AudioDriverImpl *impl)
+     impl->PlayDevice = PULSEAUDIO_PlayDevice;
+     impl->WaitDevice = PULSEAUDIO_WaitDevice;
+     impl->GetDeviceBuf = PULSEAUDIO_GetDeviceBuf;
++    impl->GetDeviceLatency = PULSEAUDIO_GetDeviceLatency;
+     impl->CloseDevice = PULSEAUDIO_CloseDevice;
+     impl->DeinitializeStart = PULSEAUDIO_DeinitializeStart;
+     impl->Deinitialize = PULSEAUDIO_Deinitialize;
+diff --git a/thirdparty/sdl/audio/wasapi/SDL_wasapi.c b/thirdparty/sdl/audio/wasapi/SDL_wasapi.c
+index db0974b0ea..dd08a9a1ba 100644
+--- a/thirdparty/sdl/audio/wasapi/SDL_wasapi.c
++++ b/thirdparty/sdl/audio/wasapi/SDL_wasapi.c
+@@ -545,6 +545,16 @@ static Uint8 *WASAPI_GetDeviceBuf(SDL_AudioDevice *device, int *buffer_size)
+     return (Uint8 *)buffer;
+ }
+ 
++static bool WASAPI_GetDeviceLatency(SDL_AudioDevice *device, float *latency)
++{
++    REFERENCE_TIME rt;
++    if (device->hidden->client && IAudioClient_GetStreamLatency(device->hidden->client, &rt)) {
++        *latency = rt / 10000000.0f;
++        return true;
++    }
++    return false;
++}
++
+ static bool WASAPI_PlayDevice(SDL_AudioDevice *device, const Uint8 *buffer, int buflen)
+ {
+     if (device->hidden->render && !SDL_GetAtomicInt(&device->hidden->device_disconnecting)) { // definitely activated?
+@@ -943,6 +953,7 @@ static bool WASAPI_Init(SDL_AudioDriverImpl *impl)
+     impl->PlayDevice = WASAPI_PlayDevice;
+     impl->WaitDevice = WASAPI_WaitDevice;
+     impl->GetDeviceBuf = WASAPI_GetDeviceBuf;
++    impl->GetDeviceLatency = WASAPI_GetDeviceLatency;
+     impl->WaitRecordingDevice = WASAPI_WaitDevice;
+     impl->RecordDevice = WASAPI_RecordDevice;
+     impl->FlushRecording = WASAPI_FlushRecording;
+diff --git a/thirdparty/sdl/include/SDL3/SDL_audio.h b/thirdparty/sdl/include/SDL3/SDL_audio.h
+index c6acf885f4..9a91883b7d 100644
+--- a/thirdparty/sdl/include/SDL3/SDL_audio.h
++++ b/thirdparty/sdl/include/SDL3/SDL_audio.h
+@@ -648,6 +648,22 @@ extern SDL_DECLSPEC bool SDLCALL SDL_GetAudioDeviceFormat(SDL_AudioDeviceID devi
+  */
+ extern SDL_DECLSPEC int * SDLCALL SDL_GetAudioDeviceChannelMap(SDL_AudioDeviceID devid, int *count);
+ 
++/**
++ * Get the current latency of an audio device.
++ *
++ * \param devid the instance ID of the device to query.
++ * \param latency on return, will be filled with the device latency.
++ * \returns true on success or false on failure; call SDL_GetError() for more
++ *          information.
++ *
++ * \threadsafety It is safe to call this function from any thread.
++ *
++ * \since It's a custom Godot function.
++ *
++ * \sa SDL_GetAudioDeviceLatency
++ */
++extern SDL_DECLSPEC bool SDLCALL SDL_GetAudioDeviceLatency(SDL_AudioDeviceID devid, float *latency);
++
+ /**
+  * Open a specific audio device.
+  *
+diff --git a/thirdparty/sdl/patches/0008-add-audio-device-get-latency.patch b/thirdparty/sdl/patches/0008-add-audio-device-get-latency.patch
+index 1d26f4f714..a88d8db3d4 100644
+--- a/thirdparty/sdl/patches/0008-add-audio-device-get-latency.patch
++++ b/thirdparty/sdl/patches/0008-add-audio-device-get-latency.patch
+@@ -1,215 +0,0 @@
+-diff --git a/thirdparty/sdl/audio/SDL_audio.c b/thirdparty/sdl/audio/SDL_audio.c
+-index 239a7314ec..5b5b6458cb 100644
+---- a/thirdparty/sdl/audio/SDL_audio.c
+-+++ b/thirdparty/sdl/audio/SDL_audio.c
+-@@ -318,6 +318,12 @@ static Uint8 *ZombieGetDeviceBuf(SDL_AudioDevice *device, int *buffer_size)
+-     return device->work_buffer;
+- }
+- 
+-+static bool ZombieGetDeviceLatency(SDL_AudioDevice *device, float *latency)
+-+{
+-+    *latency = 0;
+-+    return true;
+-+}
+-+
+- static int ZombieRecordDevice(SDL_AudioDevice *device, void *buffer, int buflen)
+- {
+-     // return a full buffer of silence every time.
+-@@ -752,6 +758,7 @@ void SDL_AudioDeviceDisconnected(SDL_AudioDevice *device)
+-         // progress will freeze, etc.
+-         device->WaitDevice = ZombieWaitDevice;
+-         device->GetDeviceBuf = ZombieGetDeviceBuf;
+-+        device->GetDeviceLatency = ZombieGetDeviceLatency;
+-         device->PlayDevice = ZombiePlayDevice;
+-         device->WaitRecordingDevice = ZombieWaitDevice;
+-         device->RecordDevice = ZombieRecordDevice;
+-@@ -835,6 +842,12 @@ static Uint8 *SDL_AudioGetDeviceBuf_Default(SDL_AudioDevice *device, int *buffer
+-     return NULL;
+- }
+- 
+-+static bool SDL_AudioGetDeviceLatency_Default(SDL_AudioDevice *device, float *latency)
+-+{
+-+    *latency = 0;
+-+    return true;
+-+}
+-+
+- static int SDL_AudioRecordDevice_Default(SDL_AudioDevice *device, void *buffer, int buflen)
+- {
+-     SDL_Unsupported();
+-@@ -857,6 +870,7 @@ static void CompleteAudioEntryPoints(void)
+-     FILL_STUB(WaitDevice);
+-     FILL_STUB(PlayDevice);
+-     FILL_STUB(GetDeviceBuf);
+-+    FILL_STUB(GetDeviceLatency);
+-     FILL_STUB(WaitRecordingDevice);
+-     FILL_STUB(RecordDevice);
+-     FILL_STUB(FlushRecording);
+-@@ -1578,6 +1592,22 @@ int *SDL_GetAudioDeviceChannelMap(SDL_AudioDeviceID devid, int *count)
+-     return result;
+- }
+- 
+-+bool SDL_GetAudioDeviceLatency(SDL_AudioDeviceID devid, float *latency)
+-+{
+-+    if (!latency) {
+-+        return SDL_InvalidParamError("latency");
+-+    }
+-+
+-+    bool result = false;
+-+    SDL_AudioDevice *device = ObtainPhysicalAudioDeviceDefaultAllowed(devid);
+-+    if (device) {
+-+        result = device->GetDeviceLatency(device, latency);
+-+    }
+-+    ReleaseAudioDevice(device);
+-+
+-+    return result;
+-+}
+-+
+- 
+- // this is awkward, but this makes sure we can release the device lock
+- //  so the device thread can terminate but also not have two things
+-@@ -1759,6 +1789,7 @@ static bool OpenPhysicalAudioDevice(SDL_AudioDevice *device, const SDL_AudioSpec
+-     device->WaitDevice = current_audio.impl.WaitDevice;
+-     device->PlayDevice = current_audio.impl.PlayDevice;
+-     device->GetDeviceBuf = current_audio.impl.GetDeviceBuf;
+-+    device->GetDeviceLatency = current_audio.impl.GetDeviceLatency;
+-     device->WaitRecordingDevice = current_audio.impl.WaitRecordingDevice;
+-     device->RecordDevice = current_audio.impl.RecordDevice;
+-     device->FlushRecording = current_audio.impl.FlushRecording;
+-diff --git a/thirdparty/sdl/audio/SDL_sysaudio.h b/thirdparty/sdl/audio/SDL_sysaudio.h
+-index 4a88bd2302..c098a87522 100644
+---- a/thirdparty/sdl/audio/SDL_sysaudio.h
+-+++ b/thirdparty/sdl/audio/SDL_sysaudio.h
+-@@ -155,6 +155,7 @@ typedef struct SDL_AudioDriverImpl
+-     bool (*WaitDevice)(SDL_AudioDevice *device);
+-     bool (*PlayDevice)(SDL_AudioDevice *device, const Uint8 *buffer, int buflen); // buffer and buflen are always from GetDeviceBuf, passed here for convenience.
+-     Uint8 *(*GetDeviceBuf)(SDL_AudioDevice *device, int *buffer_size);
+-+    bool (*GetDeviceLatency)(SDL_AudioDevice *device, float *latency);
+-     bool (*WaitRecordingDevice)(SDL_AudioDevice *device);
+-     int (*RecordDevice)(SDL_AudioDevice *device, void *buffer, int buflen);
+-     void (*FlushRecording)(SDL_AudioDevice *device);
+-@@ -290,6 +291,7 @@ struct SDL_AudioDevice
+-     bool (*WaitDevice)(SDL_AudioDevice *device);
+-     bool (*PlayDevice)(SDL_AudioDevice *device, const Uint8 *buffer, int buflen);
+-     Uint8 *(*GetDeviceBuf)(SDL_AudioDevice *device, int *buffer_size);
+-+    bool (*GetDeviceLatency)(SDL_AudioDevice *device, float *latency);
+-     bool (*WaitRecordingDevice)(SDL_AudioDevice *device);
+-     int (*RecordDevice)(SDL_AudioDevice *device, void *buffer, int buflen);
+-     void (*FlushRecording)(SDL_AudioDevice *device);
+-diff --git a/thirdparty/sdl/audio/pulseaudio/SDL_pulseaudio.c b/thirdparty/sdl/audio/pulseaudio/SDL_pulseaudio.c
+-index 4d618a6e2b..09a745de58 100644
+---- a/thirdparty/sdl/audio/pulseaudio/SDL_pulseaudio.c
+-+++ b/thirdparty/sdl/audio/pulseaudio/SDL_pulseaudio.c
+-@@ -112,6 +112,7 @@ static int (*PULSEAUDIO_pa_stream_connect_record)(pa_stream *, const char *,
+-                                                   const pa_buffer_attr *, pa_stream_flags_t);
+- static const pa_buffer_attr *(*PULSEAUDIO_pa_stream_get_buffer_attr)(pa_stream *);
+- static pa_stream_state_t (*PULSEAUDIO_pa_stream_get_state)(const pa_stream *);
+-+static int (*PULSEAUDIO_pa_stream_get_latency)(pa_stream *, pa_usec_t *r_usec, int *negative);
+- static size_t (*PULSEAUDIO_pa_stream_writable_size)(const pa_stream *);
+- static size_t (*PULSEAUDIO_pa_stream_readable_size)(const pa_stream *);
+- static int (*PULSEAUDIO_pa_stream_write)(pa_stream *, const void *, size_t,
+-@@ -227,6 +228,7 @@ static bool load_pulseaudio_syms(void)
+-     SDL_PULSEAUDIO_SYM(pa_stream_connect_record);
+-     SDL_PULSEAUDIO_SYM(pa_stream_get_buffer_attr);
+-     SDL_PULSEAUDIO_SYM(pa_stream_get_state);
+-+    SDL_PULSEAUDIO_SYM(pa_stream_get_latency);
+-     SDL_PULSEAUDIO_SYM(pa_stream_writable_size);
+-     SDL_PULSEAUDIO_SYM(pa_stream_readable_size);
+-     SDL_PULSEAUDIO_SYM(pa_stream_begin_write);
+-@@ -468,6 +470,24 @@ static Uint8 *PULSEAUDIO_GetDeviceBuf(SDL_AudioDevice *device, int *buffer_size)
+-     return device->hidden->mixbuf;
+- }
+- 
+-+static bool PULSEAUDIO_GetDeviceLatency(SDL_AudioDevice *device, float *latency)
+-+{
+-+	pa_usec_t pa_lat = 0;
+-+	if (device->hidden->stream && PULSEAUDIO_pa_context_get_state(pulseaudio_context) == PA_CONTEXT_READY && PULSEAUDIO_pa_stream_get_state(device->hidden->stream) == PA_STREAM_READY) {
+-+		int negative = 0;
+-+
+-+		if (PULSEAUDIO_pa_stream_get_latency(device->hidden->stream, &pa_lat, &negative) >= 0) {
+-+            if (negative) {
+-+			    *latency = 0;
+-+                return true;
+-+            }
+-+			*latency = pa_lat / 1000000.0f;
+-+            return true;
+-+		}
+-+	}
+-+    return false;
+-+}
+-+
+- static void ReadCallback(pa_stream *p, size_t nbytes, void *userdata)
+- {
+-     //SDL_Log("PULSEAUDIO READ CALLBACK! nbytes=%u", (unsigned int) nbytes);
+-@@ -604,7 +624,7 @@ static bool PULSEAUDIO_OpenDevice(SDL_AudioDevice *device)
+-     pa_sample_spec paspec;
+-     pa_buffer_attr paattr;
+-     pa_channel_map pacmap;
+--    pa_stream_flags_t flags = 0;
+-+    pa_stream_flags_t flags = PA_STREAM_INTERPOLATE_TIMING | PA_STREAM_AUTO_TIMING_UPDATE;
+-     int format = PA_SAMPLE_INVALID;
+-     bool result = true;
+- 
+-@@ -1021,6 +1041,7 @@ static bool PULSEAUDIO_Init(SDL_AudioDriverImpl *impl)
+-     impl->PlayDevice = PULSEAUDIO_PlayDevice;
+-     impl->WaitDevice = PULSEAUDIO_WaitDevice;
+-     impl->GetDeviceBuf = PULSEAUDIO_GetDeviceBuf;
+-+    impl->GetDeviceLatency = PULSEAUDIO_GetDeviceLatency;
+-     impl->CloseDevice = PULSEAUDIO_CloseDevice;
+-     impl->DeinitializeStart = PULSEAUDIO_DeinitializeStart;
+-     impl->Deinitialize = PULSEAUDIO_Deinitialize;
+-diff --git a/thirdparty/sdl/audio/wasapi/SDL_wasapi.c b/thirdparty/sdl/audio/wasapi/SDL_wasapi.c
+-index db0974b0ea..53257d996c 100644
+---- a/thirdparty/sdl/audio/wasapi/SDL_wasapi.c
+-+++ b/thirdparty/sdl/audio/wasapi/SDL_wasapi.c
+-@@ -545,6 +545,16 @@ static Uint8 *WASAPI_GetDeviceBuf(SDL_AudioDevice *device, int *buffer_size)
+-     return (Uint8 *)buffer;
+- }
+- 
+-+static bool WASAPI_GetDeviceLatency(SDL_AudioDevice *device, float *latency)
+-+{
+-+    REFERENCE_TIME rt;
+-+    if (device->hidden->client && IAudioClient_GetStreamLatency(device->hidden->client, &rt)) {
+-+        *latency = rt / (float)REFTIMES_PER_SEC;
+-+        return true;
+-+    }
+-+    return false;
+-+}
+-+
+- static bool WASAPI_PlayDevice(SDL_AudioDevice *device, const Uint8 *buffer, int buflen)
+- {
+-     if (device->hidden->render && !SDL_GetAtomicInt(&device->hidden->device_disconnecting)) { // definitely activated?
+-@@ -943,6 +953,7 @@ static bool WASAPI_Init(SDL_AudioDriverImpl *impl)
+-     impl->PlayDevice = WASAPI_PlayDevice;
+-     impl->WaitDevice = WASAPI_WaitDevice;
+-     impl->GetDeviceBuf = WASAPI_GetDeviceBuf;
+-+    impl->GetDeviceLatency = WASAPI_GetDeviceLatency;
+-     impl->WaitRecordingDevice = WASAPI_WaitDevice;
+-     impl->RecordDevice = WASAPI_RecordDevice;
+-     impl->FlushRecording = WASAPI_FlushRecording;
+-diff --git a/thirdparty/sdl/include/SDL3/SDL_audio.h b/thirdparty/sdl/include/SDL3/SDL_audio.h
+-index c6acf885f4..9a91883b7d 100644
+---- a/thirdparty/sdl/include/SDL3/SDL_audio.h
+-+++ b/thirdparty/sdl/include/SDL3/SDL_audio.h
+-@@ -648,6 +648,22 @@ extern SDL_DECLSPEC bool SDLCALL SDL_GetAudioDeviceFormat(SDL_AudioDeviceID devi
+-  */
+- extern SDL_DECLSPEC int * SDLCALL SDL_GetAudioDeviceChannelMap(SDL_AudioDeviceID devid, int *count);
+- 
+-+/**
+-+ * Get the current latency of an audio device.
+-+ *
+-+ * \param devid the instance ID of the device to query.
+-+ * \param latency on return, will be filled with the device latency.
+-+ * \returns true on success or false on failure; call SDL_GetError() for more
+-+ *          information.
+-+ *
+-+ * \threadsafety It is safe to call this function from any thread.
+-+ *
+-+ * \since It's a custom Godot function.
+-+ *
+-+ * \sa SDL_GetAudioDeviceLatency
+-+ */
+-+extern SDL_DECLSPEC bool SDLCALL SDL_GetAudioDeviceLatency(SDL_AudioDeviceID devid, float *latency);
+-+
+- /**
+-  * Open a specific audio device.
+-  *

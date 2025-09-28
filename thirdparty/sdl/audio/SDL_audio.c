@@ -318,6 +318,12 @@ static Uint8 *ZombieGetDeviceBuf(SDL_AudioDevice *device, int *buffer_size)
     return device->work_buffer;
 }
 
+static bool ZombieGetDeviceLatency(SDL_AudioDevice *device, float *latency)
+{
+    *latency = 0;
+    return true;
+}
+
 static int ZombieRecordDevice(SDL_AudioDevice *device, void *buffer, int buflen)
 {
     // return a full buffer of silence every time.
@@ -752,6 +758,7 @@ void SDL_AudioDeviceDisconnected(SDL_AudioDevice *device)
         // progress will freeze, etc.
         device->WaitDevice = ZombieWaitDevice;
         device->GetDeviceBuf = ZombieGetDeviceBuf;
+        device->GetDeviceLatency = ZombieGetDeviceLatency;
         device->PlayDevice = ZombiePlayDevice;
         device->WaitRecordingDevice = ZombieWaitDevice;
         device->RecordDevice = ZombieRecordDevice;
@@ -835,6 +842,12 @@ static Uint8 *SDL_AudioGetDeviceBuf_Default(SDL_AudioDevice *device, int *buffer
     return NULL;
 }
 
+static bool SDL_AudioGetDeviceLatency_Default(SDL_AudioDevice *device, float *latency)
+{
+    *latency = 0;
+    return true;
+}
+
 static int SDL_AudioRecordDevice_Default(SDL_AudioDevice *device, void *buffer, int buflen)
 {
     SDL_Unsupported();
@@ -857,6 +870,7 @@ static void CompleteAudioEntryPoints(void)
     FILL_STUB(WaitDevice);
     FILL_STUB(PlayDevice);
     FILL_STUB(GetDeviceBuf);
+    FILL_STUB(GetDeviceLatency);
     FILL_STUB(WaitRecordingDevice);
     FILL_STUB(RecordDevice);
     FILL_STUB(FlushRecording);
@@ -1578,6 +1592,22 @@ int *SDL_GetAudioDeviceChannelMap(SDL_AudioDeviceID devid, int *count)
     return result;
 }
 
+bool SDL_GetAudioDeviceLatency(SDL_AudioDeviceID devid, float *latency)
+{
+    if (!latency) {
+        return SDL_InvalidParamError("latency");
+    }
+
+    bool result = false;
+    SDL_AudioDevice *device = ObtainPhysicalAudioDeviceDefaultAllowed(devid);
+    if (device) {
+        result = device->GetDeviceLatency(device, latency);
+    }
+    ReleaseAudioDevice(device);
+
+    return result;
+}
+
 
 // this is awkward, but this makes sure we can release the device lock
 //  so the device thread can terminate but also not have two things
@@ -1759,6 +1789,7 @@ static bool OpenPhysicalAudioDevice(SDL_AudioDevice *device, const SDL_AudioSpec
     device->WaitDevice = current_audio.impl.WaitDevice;
     device->PlayDevice = current_audio.impl.PlayDevice;
     device->GetDeviceBuf = current_audio.impl.GetDeviceBuf;
+    device->GetDeviceLatency = current_audio.impl.GetDeviceLatency;
     device->WaitRecordingDevice = current_audio.impl.WaitRecordingDevice;
     device->RecordDevice = current_audio.impl.RecordDevice;
     device->FlushRecording = current_audio.impl.FlushRecording;

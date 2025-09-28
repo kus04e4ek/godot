@@ -251,6 +251,12 @@ SDL_AudioSpec AudioDriverSDL::AudioStreamManager::get_spec() const {
 	return spec;
 }
 
+float AudioDriverSDL::AudioStreamManager::get_latency() const {
+	float latency;
+	ERR_FAIL_COND_V_MSG(!SDL_GetAudioDeviceLatency(device_id, &latency), 0, SDL_GetError());
+	return latency;
+}
+
 SDL_AudioDeviceID AudioDriverSDL::AudioStreamManager::get_device_id_by_name() {
 	if (device_name == "Default") {
 		return is_input ? SDL_AUDIO_DEVICE_DEFAULT_RECORDING : SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
@@ -390,8 +396,8 @@ AudioDriver::SpeakerMode AudioDriverSDL::get_speaker_mode() const {
 }
 
 float AudioDriverSDL::get_latency() {
-	// TODO: Implement `get_latency` later as it's not supported by SDL.
-	return 0;
+	MutexLock lock(mutex);
+	return output_manager.get_latency();
 }
 
 void AudioDriverSDL::lock() {

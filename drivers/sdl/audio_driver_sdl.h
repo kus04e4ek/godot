@@ -77,6 +77,9 @@ class AudioDriverSDL : public AudioDriver {
 		SDL_AudioSpec get_spec() const;
 
 		// Requires `AudioDriverSDL` to be locked.
+		float get_latency() const;
+
+		// Requires `AudioDriverSDL` to be locked.
 		String get_device_name() const;
 		// Requires `output_manager`, `input_manager` and `AudioDriverSDL` to be locked.
 		bool set_device_name(const String &p_name);

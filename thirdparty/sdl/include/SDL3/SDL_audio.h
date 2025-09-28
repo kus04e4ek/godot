@@ -649,6 +649,22 @@ extern SDL_DECLSPEC bool SDLCALL SDL_GetAudioDeviceFormat(SDL_AudioDeviceID devi
 extern SDL_DECLSPEC int * SDLCALL SDL_GetAudioDeviceChannelMap(SDL_AudioDeviceID devid, int *count);
 
 /**
+ * Get the current latency of an audio device.
+ *
+ * \param devid the instance ID of the device to query.
+ * \param latency on return, will be filled with the device latency.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information.
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since It's a custom Godot function.
+ *
+ * \sa SDL_GetAudioDeviceLatency
+ */
+extern SDL_DECLSPEC bool SDLCALL SDL_GetAudioDeviceLatency(SDL_AudioDeviceID devid, float *latency);
+
+/**
  * Open a specific audio device.
  *
  * You can open both playback and recording devices through this function.
